@@ -1,0 +1,8 @@
+train: ./data/license plate dataset/train  #train dataset
+val: ./data/license plate dataset/valid   #valid dataset
+
+# number of classes
+nc: 2
+
+# class names
+names: ['license-plate', 'vehicle']
