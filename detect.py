@@ -349,24 +349,7 @@ def detect(save_img=False):
     if save_txt or save_img:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
         #print(f"Results saved to {save_dir}{s}")
-
-
-    
-    #                          # threshold the image using Otsus method to preprocess for tesseract
-    # thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-    #                         # perform a median blur to smooth image slightly
-    # blur = cv2.medianBlur(thresh, 3)
-    # # resize image to double the original size as tesseract does better with certain text size
-    # blur = cv2.resize(blur, None, fx = 2, fy = 2, interpolation = cv2.INTER_CUBIC)
-    # # run tesseract and convert image text to string
-    # try:
-    #     print(f'TRYTRY') 
-    #     text = pytesseract.image_to_string(blur, config='--psm 11 --oem 3')
-    #     A.append(text)
-    #     print(f'{text}')
-    #     print(" Text Extracted: {}".format(text))
-    # except: 
-    #     text = None
+        
     print(f'Done. ({time.time() - t0:.3f}s)')
 
 
