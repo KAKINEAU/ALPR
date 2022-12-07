@@ -15,15 +15,119 @@ from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
 
 
+#################### personal modification
 # reading palte number 
 import easyocr
+import csv 
+import uuid
+import time 
+import re 
+import pandas as pd
+import difflib
 
-def reading_plate(image_path):
+dataf = {'name':['test'],'ocr':['PLkada']}
+df_test = pd.DataFrame(dataf)
+print(df_test)
+dt_save = []
+img_save = []
+Last_img_data = []
+#from threading import Thread
+#from concurrent.futures import ThreadPoolExecutor
+def reading_plate(image_path,save_dir):
     #ocr 
+    print("launch OCR\n\n")
+    #print(image_path)
     reader = easyocr.Reader(['en'], gpu=True)
-    result = reader.readtext(image_path,paragraph="False")
-    return result
+    result = reader.readtext(image_path,paragraph="False", allowlist= "ABCDEFGHJKLMNPQRSTUWXYZ0123456789") # "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    #filtre palque FR formt     AA-000-AA sans o i et v 
+    # if on u chiffre au lieu d'une lettre on remplace par une * pour dire 
+    ocr_result = result[0][1]
+    print("ocr result",ocr_result)
 
+    
+
+    #function compare
+    if len(dt_save) != 0:  # check if list not empty
+        temp_last = dt_save[-1]  # get last ocr text
+        img_last = img_save[-1]
+
+    dt_save.append(ocr_result)
+    img_save.append(image_path)
+    current_last = dt_save[-1]
+    print('temp  last',temp_last , 'current last', current_last)
+    print(difflib.SequenceMatcher(None, temp_last, current_last).ratio())
+    compare_ratio = difflib.SequenceMatcher(None, temp_last, current_last).ratio()
+    if compare_ratio ==1 or (len(dt_save)>=6 and compare_ratio <=0.7):  # if 2 strings same or if list size >= 6 and ratio <0.7 this mean change of license plate
+        print("Diff = 1 ou 6 photos prises ")
+        dt_save.clear()
+        #save crop part
+        crop_file_path = os.path.join(save_dir, str(time.strftime("%Y%m%d-%H%M%S"))+".jpg")
+        Last_img_data.append([crop_file_path,img_last]) # save each photos with (path(Date) + ocr result +img save )
+
+        #cv2.imwrite(crop_file_path,img_last) #save the crop .jpg file
+        return Last_img_data
+       # return temp_last 
+    #print("ocr brut :",ocr_result)
+    #text = filter_plate(ocr_result)
+    #print("ocr filtre :",text)
+    #return result
+    #print(result)
+
+        
+
+
+
+
+
+
+def filter_plate(licence_text):
+    print("filter")    
+    if re.match("^[A-Z]{2}[0-9]{3}[A-Z]{2}$", licence_text):
+        print("valid format ")
+    else :
+        for index, ch in enumerate(licence_text):
+            if index <= 1 or index >=5 and not re.match("^[A-Z]$", licence_text) :
+                #print(index, ch)
+                licence_texte= licence_text.replace("*",licence_text[index] )
+                print (licence_texte)
+            #if index > 1 or index <5 and not re.match("^[0-9]$", licence_text) :
+              #  print(index, ch)
+             #   re.sub("[A-Z]","*",licence_text)
+    return licence_text
+        
+    #^[A-Z]{2}-[0-9]{3}-[A-Z]{2}$
+
+    # comparaison avec plaque précédente 
+def save_data(ocr_text, img_name, csv_filename):
+    #df = pd.DataFrame(columns=['Image','ocr detection'])
+    print("save data")
+    
+    #new_row = {'name':os.path.basename(img_name), 'ocr':ocr_text}
+
+    #df_test.append(new_row,ignore_index=True)
+    #print(df_test)
+    #print("end save data")
+    #if os.path.exists(csv_filename):
+    #    dat_to_csv = pd.read_csv(csv_filename, skipinitialspace=True, delim_whitespace=True)
+     #   dat_to_csv.to_csv(csv_filename, index=None, columns=['image', 'OCR Result'])
+     #   print(dat_to_csv)
+    #with open(csv_filename, mode='r', errors="ignore") as file:
+     #     final_line = file.readlines()[-1]
+      #    print("oui",final_line)
+    #print(final_line)
+    print("oui ouvre pour ajouter une ligne") 
+    
+    #save data to csv  
+    #with open(csv_filename, mode='a', newline='') as f:
+    
+
+   # with open(csv_filename, mode='a', newline='') as f:
+    #    csv_writer = csv.writer(f, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    #    csv_writer.writerow([os.path.basename(img_name), ocr_text])
+    # get last row to compare with
+    
+
+#######
 
 def detect(save_img=False):
     source, weights, view_img, save_txt, imgsz, trace = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace
@@ -35,6 +139,19 @@ def detect(save_img=False):
     save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))  # increment run
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
+    #####personal code addd
+    # create csv file for save all data
+    """print("initilisation csv file")
+    csv_file_path = os.path.join(save_dir, "Detection_results.csv")
+    #create csv
+    with open(csv_file_path, mode='w') as f:
+        dw = csv.DictWriter(f, delimiter=',',fieldnames=["photo","OCR TEXT"])
+        dw.writeheader()"""
+    
+   
+
+
+    ############
     # Initialize
     set_logging()
     device = select_device(opt.device)
@@ -76,8 +193,8 @@ def detect(save_img=False):
     old_img_w = old_img_h = imgsz
     old_img_b = 1
 
-    crp_cnt = 0
-    crop_rate = 150
+    #crp_cnt = 0
+    crop_rate = 30   # every  frame that perfom analyse
     
     t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
@@ -138,23 +255,57 @@ def detect(save_img=False):
                 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
+
+                    ############# personal modif
                     if opt.crop :
                         #print(f'{frame % crop_rate}')                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
                         if frame % crop_rate ==0 :
-                            #crop an image based on coordinates
-                            object_coordinates = [int(xyxy[0]),int(xyxy[1]),int(xyxy[2]),int(xyxy[3])]
-                            cropobj = im0[int(xyxy[1])-5:int(xyxy[3])+5,int(xyxy[0])-5:int(xyxy[2])+5]
+                            try:
+                                print("on crop \n")
+                                #crop an image based on coordinates
+                                object_coordinates = [int(xyxy[0]),int(xyxy[1]),int(xyxy[2]),int(xyxy[3])]
+                                cropobj = im0[int(xyxy[1])-5:int(xyxy[3])+5,int(xyxy[0])-5:int(xyxy[2])+5]
 
-                            #save crop part
-                            crop_file_path = os.path.join("crop",str(crp_cnt)+".jpg")
-                            cv2.imwrite(crop_file_path,cropobj)
-                            crp_cnt = crp_cnt+1
-                            try :
-                                number = reading_plate(crop_file_path)
-                                print(number[0][1])
+                                
+
+                                 #crop_file_path = os.path.join(save_dir, str(crp_cnt)+".jpg")
+                                #crp_cnt = crp_cnt+1
+                                csv_file_path = os.path.join(save_dir, "Detection_results.csv")
+                                
+                                #with open(csv_file_path, 'w') as f:
+                                #    pass
+                                try :
+                                    #thread = Thread(target=reading_plate(crop_file_path), args=(i,))
+                                   # thread.start()
+                                   # ocr = Thread(target=reading_plate, args=(crop_file_path,))
+                                    #ocr.start()
+                                    """
+                                    print (crop_file_path)
+                                    List_img=[crop_file_path]
+                                    with ThreadPoolExecutor(3) as exe:
+                                        #exe.submit(reading_plate,2)
+                                        result = exe.map(reading_plate,List_img)
+                                    print("fin thread")
+                                    for r in result:
+                                        print(r)
+                                    """
+                                    ocr_detection = reading_plate(cropobj,save_dir)  #thread / video /database csv 
+                                    print("ocr after",ocr_detection)
+                                    #ocr_detection = reading_plate(crop_file_path)  #thread / video /database csv 
+                                    """On compare la dectection avec la précédente en utilisant difflib 
+                                    import difflib
+                                    print(difflib.SequenceMatcher(None, 'PL123AK 75', 'JC858 P8050L').ratio())
+                                    retourne un ratio de similitude si par exemple >0.5 on dit que bah beosin de d'nregistrer et donc on peut supprimer l'image
+                                                                                                            """
+
+                                   # data = save_data(ocr_detection[0][1], crop_file_path, csv_file_path)
+                                   # print('data',data)
+                                    
+                                except :
+                                    pass
                             except :
-                                pass
-                            
+                                    pass
+                    ############# personal modif        
 
 
                     if save_txt:  # Write to file
@@ -239,16 +390,21 @@ if __name__ == '__main__':
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--no-trace', action='store_true', help='don`t trace model')
+    
+    #################### personal modification
     parser.add_argument('--crop', action='store_true', help='crop dectection')
     parser.add_argument('--ocr', action='store_true', help='ocr text reading dectection')
+    ####################
     opt = parser.parse_args()
     print(opt)
     #check_requirements(exclude=('pycocotools', 'thop'))
 
     with torch.no_grad():
         if opt.update:  # update all models (to fix SourceChangeWarning)
-            for opt.weights in ['yolov7.pt']:
+            for opt.weights in ['yolov7tiny_custom.pt']:
+            #for opt.weights in ['yolov7.pt']:
                 detect()
                 strip_optimizer(opt.weights)
         else:
             detect()
+    
