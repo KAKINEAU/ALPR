@@ -43,41 +43,47 @@ def reading_plate(image_path,save_dir):
     # if on u chiffre au lieu d'une lettre on remplace par une * pour dire 
     ocr_result = result[0][1]
     print("ocr result",ocr_result)
-
+    #return ocr_result
     
 
     #function compare
     if len(dt_save) != 0:  # check if list not empty
         temp_last = dt_save[-1]  # get last ocr text
         img_last = img_save[-1]
-
+    print('avant',len(dt_save))
     dt_save.append(ocr_result)
     img_save.append(image_path)
     current_last = dt_save[-1]
     print('temp  last',temp_last , 'current last', current_last)
     print(difflib.SequenceMatcher(None, temp_last, current_last).ratio())
     compare_ratio = difflib.SequenceMatcher(None, temp_last, current_last).ratio()
-    if compare_ratio ==1 or (len(dt_save)>=6 and compare_ratio <=0.7):  # if 2 strings same or if list size >= 6 and ratio <0.7 this mean change of license plate
+
+    print('après',len(dt_save))
+
+    if compare_ratio ==1 or (len(dt_save)>=2 and compare_ratio >=0.7):  # if 2 strings same or if list size >= 6 and ratio <0.7 this mean change of license plate
         print("Diff = 1 ou 6 photos prises ")
         dt_save.clear()
         #save crop part
+        all_detection = [item[1] for item in Last_img_data]
+        print("alll detectionl ist",all_detection)
+        print("current detection", current_last)
+        print("all save data")
+        for i in all_detection:
+            print("ratio entre ", i , "et", current_last)
+            ratio = difflib.SequenceMatcher(None, i, current_last).ratio()
+            print( ratio)
+            if ratio >= 0.7 : # licence plate is already in the list
+                print('ratio >0.8 ')
+                return Last_img_data
+                
+        # if not in a list we save it (DEFAULT)
         crop_file_path = os.path.join(save_dir, str(time.strftime("%Y%m%d-%H%M%S"))+".jpg")
-        Last_img_data.append([crop_file_path,img_last]) # save each photos with (path(Date) + ocr result +img save )
-
-        #cv2.imwrite(crop_file_path,img_last) #save the crop .jpg file
+        Last_img_data.append([crop_file_path,ocr_result,img_last]) # save each photos with (path(Date) + ocr result +img save )
         return Last_img_data
-       # return temp_last 
-    #print("ocr brut :",ocr_result)
-    #text = filter_plate(ocr_result)
-    #print("ocr filtre :",text)
-    #return result
-    #print(result)
 
-        
-
-
-
-
+def compare_ratio(string_1, string_2):
+    #function compare
+    return  difflib.SequenceMatcher(None, string_1, string_2).ratio()
 
 
 def filter_plate(licence_text):
@@ -136,6 +142,7 @@ def detect(save_img=False):
         ('rtsp://', 'rtmp://', 'http://', 'https://'))
 
     # Directories
+    global save_dir
     save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))  # increment run
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
@@ -266,11 +273,7 @@ def detect(save_img=False):
                                 object_coordinates = [int(xyxy[0]),int(xyxy[1]),int(xyxy[2]),int(xyxy[3])]
                                 cropobj = im0[int(xyxy[1])-5:int(xyxy[3])+5,int(xyxy[0])-5:int(xyxy[2])+5]
 
-                                
-
-                                 #crop_file_path = os.path.join(save_dir, str(crp_cnt)+".jpg")
-                                #crp_cnt = crp_cnt+1
-                                csv_file_path = os.path.join(save_dir, "Detection_results.csv")
+                                #csv_file_path = os.path.join(save_dir, "Detection_results.csv")
                                 
                                 #with open(csv_file_path, 'w') as f:
                                 #    pass
@@ -289,17 +292,7 @@ def detect(save_img=False):
                                     for r in result:
                                         print(r)
                                     """
-                                    ocr_detection = reading_plate(cropobj,save_dir)  #thread / video /database csv 
-                                    print("ocr after",ocr_detection)
-                                    #ocr_detection = reading_plate(crop_file_path)  #thread / video /database csv 
-                                    """On compare la dectection avec la précédente en utilisant difflib 
-                                    import difflib
-                                    print(difflib.SequenceMatcher(None, 'PL123AK 75', 'JC858 P8050L').ratio())
-                                    retourne un ratio de similitude si par exemple >0.5 on dit que bah beosin de d'nregistrer et donc on peut supprimer l'image
-                                                                                                            """
-
-                                   # data = save_data(ocr_detection[0][1], crop_file_path, csv_file_path)
-                                   # print('data',data)
+                                    ocr_detection = reading_plate(cropobj,save_dir)  # read/extract licence palte number
                                     
                                 except :
                                     pass
@@ -349,7 +342,7 @@ def detect(save_img=False):
     if save_txt or save_img:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
         #print(f"Results saved to {save_dir}{s}")
-        
+
     print(f'Done. ({time.time() - t0:.3f}s)')
 
 
@@ -390,4 +383,19 @@ if __name__ == '__main__':
                 strip_optimizer(opt.weights)
         else:
             detect()
-    
+            ### save image in the folder
+            print("liste final des elements : ", Last_img_data)
+            for data_image in Last_img_data:
+                print("path",data_image[0], "image", data_image[-1])
+                cv2.imwrite(data_image[0],data_image[-1]) #save the crop .jpg file   cv2.imwrite(path, image coordinate)
+
+            ### save all data  in a csv (image name , detection result, GPS info, )
+            csv_file_path =os.path.join(save_dir, "Detection_results.csv")
+            with open(csv_file_path, "w", newline="") as f:
+                writer = csv.writer(f, delimiter=',',quotechar='|', quoting=csv.QUOTE_MINIMAL, lineterminator='\n')
+                writer.writerow(['image name', 'ocr detection'])
+                for item in Last_img_data:
+                    writer.writerow([os.path.basename(item[0]),item[1]])
+            
+            ### compare our database detection to the data of our research
+            #csv1 with csv 2
