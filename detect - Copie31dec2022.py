@@ -105,7 +105,33 @@ def filter_plate(licence_text):
 
     # comparaison avec plaque précédente 
 def save_data(ocr_text, img_name, csv_filename):
+    #df = pd.DataFrame(columns=['Image','ocr detection'])
     print("save data")
+    
+    #new_row = {'name':os.path.basename(img_name), 'ocr':ocr_text}
+
+    #df_test.append(new_row,ignore_index=True)
+    #print(df_test)
+    #print("end save data")
+    #if os.path.exists(csv_filename):
+    #    dat_to_csv = pd.read_csv(csv_filename, skipinitialspace=True, delim_whitespace=True)
+     #   dat_to_csv.to_csv(csv_filename, index=None, columns=['image', 'OCR Result'])
+     #   print(dat_to_csv)
+    #with open(csv_filename, mode='r', errors="ignore") as file:
+     #     final_line = file.readlines()[-1]
+      #    print("oui",final_line)
+    #print(final_line)
+    print("oui ouvre pour ajouter une ligne") 
+    
+    #save data to csv  
+    #with open(csv_filename, mode='a', newline='') as f:
+    
+
+   # with open(csv_filename, mode='a', newline='') as f:
+    #    csv_writer = csv.writer(f, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    #    csv_writer.writerow([os.path.basename(img_name), ocr_text])
+    # get last row to compare with
+    
 
 #######
 
@@ -120,6 +146,19 @@ def detect(save_img=False):
     save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))  # increment run
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
+    #####personal code addd
+    # create csv file for save all data
+    """print("initilisation csv file")
+    csv_file_path = os.path.join(save_dir, "Detection_results.csv")
+    #create csv
+    with open(csv_file_path, mode='w') as f:
+        dw = csv.DictWriter(f, delimiter=',',fieldnames=["photo","OCR TEXT"])
+        dw.writeheader()"""
+    
+   
+
+
+    ############
     # Initialize
     set_logging()
     device = select_device(opt.device)
@@ -194,6 +233,8 @@ def detect(save_img=False):
         if classify:
             pred = apply_classifier(pred, modelc, img, im0s)
 
+        
+
         # Process detections
         for i, det in enumerate(pred):  # detections per image
             if webcam:  # batch_size >= 1
@@ -223,7 +264,8 @@ def detect(save_img=False):
                 for *xyxy, conf, cls in reversed(det):
 
                     ############# personal modif
-                    if opt.crop :                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+                    if opt.crop :
+                        #print(f'{frame % crop_rate}')                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
                         if frame % crop_rate ==0 :
                             try:
                                 print("on crop \n")
@@ -236,6 +278,20 @@ def detect(save_img=False):
                                 #with open(csv_file_path, 'w') as f:
                                 #    pass
                                 try :
+                                    #thread = Thread(target=reading_plate(crop_file_path), args=(i,))
+                                   # thread.start()
+                                   # ocr = Thread(target=reading_plate, args=(crop_file_path,))
+                                    #ocr.start()
+                                    """
+                                    print (crop_file_path)
+                                    List_img=[crop_file_path]
+                                    with ThreadPoolExecutor(3) as exe:
+                                        #exe.submit(reading_plate,2)
+                                        result = exe.map(reading_plate,List_img)
+                                    print("fin thread")
+                                    for r in result:
+                                        print(r)
+                                    """
                                     ocr_detection = reading_plate(cropobj,save_dir)  # read/extract licence palte number
                                     
                                 except :
