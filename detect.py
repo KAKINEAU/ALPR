@@ -19,76 +19,39 @@ from utils.torch_utils import select_device, load_classifier, time_synchronized,
 # reading palte number 
 import easyocr
 import csv 
-import uuid
-import time 
 import re 
-import pandas as pd
 import difflib
+import pytesseract
 
-dataf = {'name':['test'],'ocr':['PLkada']}
-df_test = pd.DataFrame(dataf)
-print(df_test)
 dt_save = []
 img_save = []
 Last_img_data = []
-#from threading import Thread
-#from concurrent.futures import ThreadPoolExecutor
-def reading_plate(image_path,save_dir):
-    #ocr 
-    print("launch OCR\n\n")
-    #print(image_path)
-    reader = easyocr.Reader(['en'], gpu=True)
-    result = reader.readtext(image_path,paragraph="False", allowlist= "ABCDEFGHJKLMNPQRSTUWXYZ0123456789") # "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    #filtre palque FR formt     AA-000-AA sans o i et v 
-    # if on u chiffre au lieu d'une lettre on remplace par une * pour dire 
-    ocr_result = result[0][1]
-    print("ocr result",ocr_result)
-    #return ocr_result
-    
 
-    #function compare
-    if len(dt_save) != 0:  # check if list not empty
-        temp_last = dt_save[-1]  # get last ocr text
-        img_last = img_save[-1]
-    print('avant',len(dt_save))
-    dt_save.append(ocr_result)
-    img_save.append(image_path)
-    current_last = dt_save[-1]
-    print('temp  last',temp_last , 'current last', current_last)
-    print(difflib.SequenceMatcher(None, temp_last, current_last).ratio())
-    compare_ratio = difflib.SequenceMatcher(None, temp_last, current_last).ratio()
+### Read plate tesseract ocr
+def read_plate(image_path):
+    gray = cv2.cvtColor(image_path, cv2.COLOR_BGR2GRAY) # turn image into black and white
 
-    print('après',len(dt_save))
+    gray = cv2.GaussianBlur(gray, (3,3), 0) # apply GaussianBlur filter to eliminate noise 
 
-    if compare_ratio ==1 or (len(dt_save)>=2 and compare_ratio >=0.7):  # if 2 strings same or if list size >= 6 and ratio <0.7 this mean change of license plate
-        print("Diff = 1 ou 6 photos prises ")
-        dt_save.clear()
-        #save crop part
-        all_detection = [item[1] for item in Last_img_data]
-        print("alll detectionl ist",all_detection)
-        print("current detection", current_last)
-        print("all save data")
-        for i in all_detection:
-            print("ratio entre ", i , "et", current_last)
-            ratio = difflib.SequenceMatcher(None, i, current_last).ratio()
-            print( ratio)
-            if ratio >= 0.7 : # licence plate is already in the list
-                print('ratio >0.8 ')
-                return Last_img_data
-                
-        # if not in a list we save it (DEFAULT)
-        crop_file_path = os.path.join(save_dir, str(time.strftime("%Y%m%d-%H%M%S"))+".jpg")
-        Last_img_data.append([crop_file_path,ocr_result,img_last]) # save each photos with (path(Date) + ocr result +img save )
-        return Last_img_data
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # path of tesseract.exe 
 
-def compare_ratio(string_1, string_2):
-    #function compare
-    return  difflib.SequenceMatcher(None, string_1, string_2).ratio()
+    text = pytesseract.image_to_string(gray)
+    return text, image_path
 
+### Read plate easy ocr
+def read_license_plate(image_path):
+    reader = easyocr.Reader(['fr'])
+    result = reader.readtext(image_path, paragraph="False", allowlist= "ABCDEFGHJKLMNPQRSTUWXYZ0123456789")
+    return result[0][1], image_path # return license plate text and the image 
 
+### compare two string
+def similarity(str1, str2):
+    return difflib.SequenceMatcher(None, str1, str2).ratio()
+
+### filter format of the plate AA-000-AA doesn't work yet
 def filter_plate(licence_text):
     print("filter")    
-    if re.match("^[A-Z]{2}[0-9]{3}[A-Z]{2}$", licence_text):
+    if re.match("^[A-Z]{2}-[0-9]{3}-[A-Z]{2}$", licence_text):
         print("valid format ")
     else :
         for index, ch in enumerate(licence_text):
@@ -100,13 +63,6 @@ def filter_plate(licence_text):
               #  print(index, ch)
              #   re.sub("[A-Z]","*",licence_text)
     return licence_text
-        
-    #^[A-Z]{2}-[0-9]{3}-[A-Z]{2}$
-
-    # comparaison avec plaque précédente 
-def save_data(ocr_text, img_name, csv_filename):
-    print("save data")
-
 #######
 
 def detect(save_img=False):
@@ -161,9 +117,6 @@ def detect(save_img=False):
     old_img_w = old_img_h = imgsz
     old_img_b = 1
 
-    #crp_cnt = 0
-    crop_rate = 30   # every  frame that perfom analyse
-    
     t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
@@ -194,6 +147,8 @@ def detect(save_img=False):
         if classify:
             pred = apply_classifier(pred, modelc, img, im0s)
 
+        crop_rate = 30   # perform OCR every ... frames
+
         # Process detections
         for i, det in enumerate(pred):  # detections per image
             if webcam:  # batch_size >= 1
@@ -214,10 +169,9 @@ def detect(save_img=False):
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-
                 #make crop folder
-                if not os.path.exists("crop"):
-                        os.mkdir("crop")
+                #if not os.path.exists("crop"):
+                #        os.mkdir("crop")
                 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
@@ -226,18 +180,41 @@ def detect(save_img=False):
                     if opt.crop :                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
                         if frame % crop_rate ==0 :
                             try:
-                                print("on crop \n")
+                                print("We execute our modifications (OCR, ...) \n")
                                 #crop an image based on coordinates
                                 object_coordinates = [int(xyxy[0]),int(xyxy[1]),int(xyxy[2]),int(xyxy[3])]
                                 cropobj = im0[int(xyxy[1])-5:int(xyxy[3])+5,int(xyxy[0])-5:int(xyxy[2])+5]
 
-                                #csv_file_path = os.path.join(save_dir, "Detection_results.csv")
-                                
-                                #with open(csv_file_path, 'w') as f:
-                                #    pass
                                 try :
-                                    ocr_detection = reading_plate(cropobj,save_dir)  # read/extract licence palte number
-                                    
+                                    # perform the OCR
+                                    ocr_result, img_path = read_license_plate(cropobj)  # easyOCR
+                                    #ocr_result, img_path = read_plate(cropobj)  # Tesseract
+                                    print("ocr_result : ", ocr_result,"\n")
+
+                                    # save and get the previous OCR result if exist
+                                    if len(dt_save) != 0:  # check if list not empty
+                                        temp_last = dt_save[-1]  # get previous ocr text
+                                        img_last = img_save[-1]  # get previous image
+
+                                    dt_save.append(ocr_result)  
+                                    img_save.append(img_path)
+                                    #current_last = dt_save[-1]
+
+                                    # get the ratio similarity between the two last detection (see if it's the same plate)
+                                    similarity_ratio = similarity(temp_last, ocr_result)
+                                    print("similarity between (temp,current) :", temp_last, ocr_result," is  =", similarity_ratio)
+                                    if similarity_ratio ==1 or (len(dt_save)>=5 and similarity_ratio >=0.7):
+                                        dt_save.clear()
+                                        all_detection = [item[1] for item in Last_img_data]
+                                        for i in all_detection:
+                                            print("ratio entre ", i , "et", ocr_result)
+                                            if similarity(i, ocr_result) >= 0.7 : # licence plate is already in the list
+                                                print('ratio >0.7 license plate already in list ')
+                                                pass
+                                    else:
+                                        # if not in a list we save it (DEFAULT)
+                                        crop_file_path = os.path.join(save_dir, str(time.strftime("%Y%m%d-%H%M%S"))+".jpg")
+                                        Last_img_data.append([crop_file_path,ocr_result,img_last]) # save each photos with (path(Date) + ocr result +img save )
                                 except :
                                     pass
                             except :
@@ -343,3 +320,4 @@ if __name__ == '__main__':
             
             ### compare our database detection to the data of our research
             #csv1 with csv 2
+            
