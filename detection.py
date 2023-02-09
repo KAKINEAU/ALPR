@@ -16,100 +16,97 @@ from utils.torch_utils import select_device, load_classifier, time_synchronized,
 
 
 #################### personal modification
-from image_processing_fcts import similarity, read_license_plate, image_processing, read_plate, order_points
 # reading palte number 
-#import easyocr
+import easyocr
 import csv 
 import re 
 import difflib
-#import pytesseract
-import threading
+import pytesseract
 
-def filter_plate2(licence_text):
-    pattern = re.compile("[A-Z]{2}-[0-9]{3}-[A-Z]{2}") #|[A-Z]{2}[0-9]{3}[A-Z]{2}
-    result = re.search(pattern,licence_text)
-    
-    if result:
-        #print("\033[32m plate is {} => result is {} \033[0m".format(licence_text, result.group()))
-        
-        return result.group()
-    return None
+import numpy as np
+def four_point_transform(image, tl, tr, br, bl):
+    print("dans four point")
+    print("topleft", tl)
+    print("topr", tr)
+    print("botr", br)
+    print("botl", bl)
+	# obtain a consistent order of the points and unpack them
+	# individually
+	#rect = order_points(pts)
+	#(tl, tr, br, bl) = rect
+	# compute the width of the new image, which will be the
+	# maximum distance between bottom-right and bottom-left
+	# x-coordiates or the top-right and top-left x-coordinates
+    widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+    widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+    maxWidth = max(int(widthA), int(widthB))
+	# compute the height of the new image, which will be the
+	# maximum distance between the top-right and bottom-right
+	# y-coordinates or the top-left and bottom-left y-coordinates
+    heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+    heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+    maxHeight = max(int(heightA), int(heightB))
+	# now that we have the dimensions of the new image, construct
+	# the set of destination points to obtain a "birds eye view",
+	# (i.e. top-down view) of the image, again specifying points
+	# in the top-left, top-right, bottom-right, and bottom-left
+	# order
+    dst = np.array([
+		[0, 0],
+		[maxWidth - 1, 0],
+		[maxWidth - 1, maxHeight - 1],
+		[0, maxHeight - 1]], dtype = "float32")
+	# compute the perspective transform matrix and then apply it
+    M = cv2.getPerspectiveTransform(rect, dst)
+    warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
+    cv2.imshow("warped",warped)
+    print("cv2imshow")
+	# return the warped image
+    return warped
 
-def save_image(image,filename):
-        #print("THREAD image save")
-        cv2.imwrite(filename, image)
 
 
-def filter(filename):
-    
-    #print("\nFIlter\n")
-    image = cv2.imread(filename)
-    if image is None or image.size == 0:
-        print("Error: Could not read image")
-    else :
-        warped = image_processing(image)
-        cv2.imwrite(filename, warped)
-        print("\033[34mwarped\033[0m")
-
-def read_plate_tesseract(filename):
-    
-    global ocr_result
-    image = cv2.imread(filename)
-    ocr_result = read_plate(image,filename)
-    if ocr_result != "":
-        print("read_plate tesseract", ocr_result)
-
-Last_img_data = []
-"""    
 dt_save = []
 img_save = []
-def process_ocr_result(ocr_text, image_path):
-    #print("PROCESS OCR RESULT",len(dt_save))
+Last_img_data = []
 
-    if len(dt_save) != 0:
-        temp_last = dt_save[-1]
-        img_last = img_save[-1]
-        print("temp_last",temp_last)
-    else:
-        temp_last = []
-        img_last = [] 
-    dt_save.append(ocr_text)
-    img_save.append(image_path)
+### Read plate tesseract ocr
+def read_plate(image_path):
+    gray = cv2.cvtColor(image_path, cv2.COLOR_BGR2GRAY) # turn image into black and white
 
-    similarity_ratio = similarity(temp_last, ocr_text) if len(dt_save) != 0 else 0
-    
-    if similarity_ratio == 1 or (len(dt_save) >= 5 and similarity_ratio >= 0.7):
-        dt_save.clear()
-        all_detection = [item[1] for item in Last_img_data]
-        for i in all_detection:
-            if similarity(i, ocr_text) >= 0.7:
-                print("{} déjà dans la liste on peut donc supprimer l'image".format(ocr_text))
-                return None
-    else:
-        #crop_file_path = os.path.join(save_dir, str(time.strftime("%Y%m%d-%H%M%S")) + ".jpg")
-        Last_img_data.append([image_path, ocr_text])
-        return Last_img_data
-"""
-def check_plate_uniqueness(ocr_text, image_path):
-    print("check_plate_uniqueness",len(Last_img_data))
-    all_detections = [item[1] for item in Last_img_data]
+    gray = cv2.GaussianBlur(gray, (3,3), 0) # apply GaussianBlur filter to eliminate noise 
 
-    if all_detections and any(similarity(i, ocr_text) >= 0.7 for i in all_detections):
-        return None
-    else:
-        Last_img_data.append([image_path, ocr_text])
-        return Last_img_data
-    
-def get_rightmost_plate_coords(boxes_coords, plate_number):
-    max_x1 = float('-inf')
-    rightmost_plate = None
-    for i in range(plate_number):
-        x1 = (boxes_coords[i][0]).item()
-        if x1 > max_x1:
-             max_x1 = x1
-             rightmost_plate = boxes_coords[i]
-    return rightmost_plate
-#################### personal modification
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # path of tesseract.exe 
+
+    text = pytesseract.image_to_string(gray)
+    return text, image_path
+
+### Read plate easy ocr
+def read_license_plate(image_path):
+    reader = easyocr.Reader(['fr'])
+    result = reader.readtext(image_path, paragraph="False", allowlist= "ABCDEFGHJKLMNPQRSTUWXYZ0123456789")
+    return result[0][1], image_path # return license plate text and the image 
+
+### compare two string
+def similarity(str1, str2):
+    return difflib.SequenceMatcher(None, str1, str2).ratio()
+
+### filter format of the plate AA-000-AA doesn't work yet
+def filter_plate(licence_text):
+    print("filter")    
+    if re.match("^[A-Z]{2}-[0-9]{3}-[A-Z]{2}$", licence_text):
+        print("valid format ")
+    else :
+        for index, ch in enumerate(licence_text):
+            if index <= 1 or index >=5 and not re.match("^[A-Z]$", licence_text) :
+                #print(index, ch)
+                licence_texte= licence_text.replace("*",licence_text[index] )
+                print (licence_texte)
+            #if index > 1 or index <5 and not re.match("^[0-9]$", licence_text) :
+              #  print(index, ch)
+             #   re.sub("[A-Z]","*",licence_text)
+    return licence_text
+#######
 
 def detect(save_img=False):
     source, weights, view_img, save_txt, imgsz, trace = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace
@@ -193,7 +190,7 @@ def detect(save_img=False):
         if classify:
             pred = apply_classifier(pred, modelc, img, im0s)
 
-        crop_rate = 60   # perform OCR every ... frames
+        crop_rate = 30   # perform OCR every ... frames
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
@@ -201,7 +198,7 @@ def detect(save_img=False):
                 p, s, im0, frame = path[i], '%g: ' % i, im0s[i].copy(), dataset.count
             else:
                 p, s, im0, frame = path, '', im0s, getattr(dataset, 'frame', 0)
-            
+
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # img.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
@@ -214,69 +211,77 @@ def detect(save_img=False):
                 for c in det[:, -1].unique():
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+
+                #make crop folder
+                #if not os.path.exists("crop"):
+                #        os.mkdir("crop")
                 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
-    
+
                     ############# personal modif
                     if opt.crop :                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
                         if frame % crop_rate ==0 :
                             try:
-                                # Handle multiple plates
-                                num_of_detected_plates = len(det)
-                                print("il y a {} plaque(s)".format(num_of_detected_plates))
-
-                                rightmost_plate_coords = get_rightmost_plate_coords(det[:, :4],num_of_detected_plates)
-                                print(rightmost_plate_coords)
-                                # Extract detection square coords top-left(x1,y1), bottom-right(x2,y2)
-                                x1 = (rightmost_plate_coords[0]).item()
-                                y1 = (rightmost_plate_coords[1]).item()
-                                x2 = (rightmost_plate_coords[2]).item()
-                                y2 = (rightmost_plate_coords[3]).item()
-                                
-                                # Crop inside the image using square coords
-                                cropobj = im0[int(y1)-10:int(y2)+10,int(x1)-10:int(x2)+10]
-
-                                #create a path for the image (dir : last_run folder, name : YYYYMMDD-HHMMSS.jpg)
-                                image_path = os.path.join(save_dir,str(time.strftime("%Y%m%d-%H%M%S"))+".jpg")
-                                
-                                # Save image
-                                thread = threading.Thread(target=save_image, args=(cropobj,image_path))
-                                thread.start()
-                                thread.join() # Attendre que le thread soit terminé
-                                
-                                # Image Processing function to warp the image
-                                thread2 = threading.Thread(target=filter, args=(image_path,))
-                                thread2.start()
-                                thread2.join() # Attendre que le thread soit terminé
-                                
-                                # OCR Processing function to extract text
-                                thread3 = threading.Thread(target=read_plate_tesseract, args=(image_path,))
-                                thread3.start()
-                                thread3.join() # Attendre que le thread soit terminé
-
-                                if not ocr_result:
-                                    raise ValueError ("OCR result is empty => next image")
-
-                                # See the format of the detection
-                                valid_format = filter_plate2(ocr_result)
-                                if valid_format != None:
-                                    if check_plate_uniqueness(valid_format, image_path) == None:
-                                        raise ValueError ("Already in the list".format(valid_format))
-                                    else :
-                                        print("\033[32mL'image a été sauvegardé :{} detection : {}\033[0m".format(image_path,valid_format))
-                                else :
-                                    raise ValueError ("\033[31mFormat not valid {} =>ocr_result {} image {}  next image\033[0m".format(valid_format,ocr_result,image_path))
+                                print("We execute our modifications (OCR, ...) \n")
                                 #crop an image based on coordinates
-                                #cropobj = im0[int(xyxy[1])-10:int(xyxy[3])+10,int(xyxy[0])-10:int(xyxy[2])+10] 
-                                #print(f"x : {xyxy[0]} y : {xyxy[1]}")
-                            except Exception as e:
-                                    print("\033[33mil y a une exception : {}  image : {} \033[0m".format(e,image_path))    
-                                    try:
-                                        os.remove(image_path)
-                                    except OSError:
-                                        pass
-                                        
+                                object_coordinates = [int(xyxy[0]),int(xyxy[1]),int(xyxy[2]),int(xyxy[3])]
+
+                                
+                                
+                                print("object coordinates : ",object_coordinates)
+                                cropobj = im0[int(xyxy[1])-5:int(xyxy[3])+5,int(xyxy[0])-5:int(xyxy[2])+5]
+
+                                cropobj2 = im0[int(xyxy[1])-15:int(xyxy[3])+15,int(xyxy[0])-15:int(xyxy[2])+15]
+                                cv2.imwrite("crop2.jpg",cropobj2)
+                                #print("find-platepoints): ",find_plate_points(cropobj))
+                                xmin = int(xyxy[0]-5)
+                                ymin =int(xyxy[1]-5)
+                                xmax =int(xyxy[2]+5)
+                                ymax =int(xyxy[3]+5)
+                                tl = xmin, ymin
+                                tr = xmax, ymin
+                                br = xmax, ymax
+                                bl = xmin, ymax
+                                rect = [tl,tr,br,bl]
+                                
+                                four_point_transform(cropobj,tl,tr,br,bl)
+                                print("xyxy object coordinates : ",xyxy)
+                                try :
+                                    # perform the OCR
+                                    ocr_result, img_path = read_license_plate(cropobj)  # easyOCR
+                                    #ocr_result, img_path = read_plate(cropobj)  # Tesseract
+                                    print("ocr_result : ", ocr_result,"\n")
+                                    
+                                    # save and get the previous OCR result if exist
+                                    if len(dt_save) != 0:  # check if list not empty
+                                        temp_last = dt_save[-1]  # get previous ocr text
+                                        img_last = img_save[-1]  # get previous image
+
+                                    dt_save.append(ocr_result)  
+                                    img_save.append(img_path)
+                                    #current_last = dt_save[-1]
+
+                                    # get the ratio similarity between the two last detection (see if it's the same plate)
+                                    similarity_ratio = similarity(temp_last, ocr_result)
+                                    print("similarity between (temp,current) :", temp_last, ocr_result," is  =", similarity_ratio)
+
+                                    if similarity_ratio ==1 or (len(dt_save)>=5 and similarity_ratio >=0.7):
+                                        dt_save.clear()
+                                        all_detection = [item[1] for item in Last_img_data]
+                                        for i in all_detection:
+                                            print("ratio entre ", i , "et", ocr_result)
+                                            if similarity(i, ocr_result) >= 0.7 : # licence plate is already in the list
+                                                print('ratio >0.7 license plate already in list ')
+                                                pass  # send a message for the robot to move
+                                    else:
+                                        # if not in a list we save it (DEFAULT)
+                                        crop_file_path = os.path.join(save_dir, str(time.strftime("%Y%m%d-%H%M%S"))+".jpg")
+                                        Last_img_data.append([crop_file_path,ocr_result,img_last]) # save each photos with (path(Date) + ocr result +img save )
+                                except :
+                                    pass
+                            except :
+                                    pass
                     ############# personal modif        
 
 
@@ -291,7 +296,7 @@ def detect(save_img=False):
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
 
             # Print time (inference + NMS)
-            #print(f' {s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
+            #print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
 
             # Stream results
             if view_img:
@@ -363,13 +368,12 @@ if __name__ == '__main__':
         else:
             detect()
 
-            """
             ### save image in the folder
             print("liste final des elements : ", Last_img_data)
             for data_image in Last_img_data:
                 print("path",data_image[0], "image", data_image[-1])
-                #cv2.imwrite(data_image[0],data_image[-1]) #save the crop .jpg file   cv2.imwrite(path, image coordinate)
-            """
+                cv2.imwrite(data_image[0],data_image[-1]) #save the crop .jpg file   cv2.imwrite(path, image coordinate)
+
             ### save all data  in a csv (image name , detection result, GPS info, )
             csv_file_path =os.path.join(save_dir, "Detection_results.csv")
             with open(csv_file_path, "w", newline="") as f:

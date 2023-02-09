@@ -287,6 +287,12 @@ class LoadStreams:  # multiple IP or RTSP cameras
                 import pafy
                 url = pafy.new(url).getbest(preftype="mp4").url
             cap = cv2.VideoCapture(url)
+
+            #####modif perso force format
+            #cap.set(3, 1280)
+            #cap.set(4, 720)
+
+            ####
             assert cap.isOpened(), f'Failed to open {s}'
             w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
